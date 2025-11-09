@@ -5,4 +5,5 @@ import pyVHR.datasets
 import pyVHR.plot
 import pyVHR.utils
 import pyVHR.deepRPPG
+import pyVHR.service
 

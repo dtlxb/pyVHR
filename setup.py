@@ -30,4 +30,9 @@ setuptools.setup(
     include_package_data = True,
     python_requires='>=3.6',
     install_requires=reqs,
+    entry_points={
+        "console_scripts": [
+            "pyvhr-realtime=pyVHR.service.realtime_service:main",
+        ]
+    },
 )

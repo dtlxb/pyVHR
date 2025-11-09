@@ -62,3 +62,4 @@ class Params:
     fake_delay = False
     resize = True
     out_path = None
+    camera_reconnect_interval = 1.0

@@ -1,11 +1,16 @@
+import queue
+import statistics
 from threading import Thread
 from time import sleep
-from pyVHR.realtime.params import Params
-from pyVHR.realtime.video_capture import VideoCapture
+
 import cv2
 import numpy as np
 import plotly.graph_objects as go
+import PySimpleGUI as sg
 from importlib import import_module, util
+
+from pyVHR.realtime.params import Params
+from pyVHR.realtime.video_capture import VideoCapture
 from pyVHR.datasets.dataset import datasetFactory
 from pyVHR.utils.errors import getErrors, printErrors, displayErrors
 from pyVHR.extraction.sig_processing import *
@@ -15,10 +20,6 @@ from pyVHR.BVP.BVP import *
 from pyVHR.BPM.BPM import *
 from pyVHR.BVP.methods import *
 from pyVHR.BVP.filters import *
-import PySimpleGUI as sg
-import numpy as np
-import plotly.graph_objects as go
-import queue
 
 
 class SharedData:
@@ -30,6 +31,7 @@ class SharedData:
         self.q_stop = queue.Queue()
         self.q_stop_cap = queue.Queue()
         self.q_frames = queue.Queue()
+        self.q_pose_frames = queue.Queue(maxsize=2)
 
 
 def VHRroutine(sharedData):
@@ -96,7 +98,8 @@ def VHRroutine(sharedData):
     timeCount = []
 
     cap = VideoCapture(Params.videoFileName, sharedData, fps=fps,
-                       sleep=Params.fake_delay, resize=Params.resize)
+                       sleep=Params.fake_delay, resize=Params.resize,
+                       reconnect_interval=Params.camera_reconnect_interval)
 
     send_images_count = 0
     send_images_stride = 3
@@ -117,6 +120,18 @@ def VHRroutine(sharedData):
                 break
             if frame is None:
                 continue
+            if hasattr(sharedData, "q_pose_frames"):
+                try:
+                    sharedData.q_pose_frames.put_nowait(frame)
+                except queue.Full:
+                    try:
+                        sharedData.q_pose_frames.get_nowait()
+                    except queue.Empty:
+                        pass
+                    try:
+                        sharedData.q_pose_frames.put_nowait(frame)
+                    except queue.Full:
+                        pass
             # convert the BGR image to RGB.
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             processed_frames_count += 1
@@ -283,6 +298,11 @@ def VHRroutine(sharedData):
         print("median: ",statistics.median(timeCount))
         print("max:    ",max(timeCount))
         print("min:    ",min(timeCount))
+    if hasattr(sharedData, "q_pose_frames"):
+        try:
+            sharedData.q_pose_frames.put_nowait(0)
+        except queue.Full:
+            pass
     return
 
 

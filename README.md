@@ -208,6 +208,25 @@ Below is a video showing the use of the GUI.
 https://user-images.githubusercontent.com/34277835/136981161-8799051a-ca0d-45c6-b4dd-e146457c7bdd.mp4
 
 
+## Realtime streaming service
+
+A lightweight streaming service based on the new module `pyVHR.service.realtime_service` allows continuous camera capture and BPM broadcasting.
+
+Basic usage:
+
+```bash
+python -m pyVHR.service.realtime_service
+```
+
+The service will:
+
+- connect to the default camera (ID `0`)
+- compute BPM estimates once per second in the background
+- print a compact status line in the terminal
+- expose a WebSocket server on `ws://127.0.0.1:8765` that emits JSON payloads like `{"bpm": 72.5, "timestamp": 1731139200.12}`
+
+Command line arguments can be customised by editing `ServiceConfig` or embedding the service from your own code. If the camera disconnects, the worker thread will automatically attempt to reconnect.
+
 ## Reference
 
 If you use this code, please cite the papers:
