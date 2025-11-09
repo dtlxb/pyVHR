@@ -3,6 +3,7 @@
 
 置信度-脸部识别和方向也好了。
 只要pyvhr-realtime，然后监听8765和8766就行了。
+脸部转向和身体置信度（有头无身体）都简单测试通过。
    const ws = new WebSocket("ws://127.0.0.1:8765");
    ws.onmessage = (event) => console.log("BPM消息:", JSON.parse(event.data));
    ws.onopen = () => console.log("已连接 BPM WebSocket");
