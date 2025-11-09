@@ -5,8 +5,19 @@ import threading
 import ast
 import pickle
 
+import matplotlib
+matplotlib.use("Agg")
+
 
 def GUI_MENU():
+    try:
+        import cupy
+        if not hasattr(cupy, "asarray"):
+            raise ImportError("cupy.asarray 不可用")
+        import cusignal  # noqa: F401
+    except Exception as exc:
+        print(f"[WARN] GPU 依赖不可用，自动切换到 CPU 模式：{exc}")
+        Params.cuda = False
     col1 = [[sg.Text("Set Parameters:")],
             [sg.Text("Video file path, or device number:")],
             [sg.In("", key="-VideoFileName-"),
@@ -132,14 +143,7 @@ def GUI_MENU():
         imgbytes = cv2.imencode('.png', cv2.cvtColor(
             np.zeros((480, 640, 3), dtype=np.uint8), cv2.COLOR_BGR2RGB))[1].tobytes()
         wr['-VIDEO-'].update(data=imgbytes)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=np.arange(0, 10, 1), y=np.zeros(9),
-                                 mode='lines+markers',
-                                 name='lines+markers'))
-        fig.update_layout(autosize=False, width=400, height=300, margin=dict(
-            l=1, r=1, b=1, t=1, pad=1), paper_bgcolor="LightSteelBlue",)
-        img_bytes = fig.to_image(format="png")
-        wr['-BPM_PLOT-'].update(data=img_bytes)
+        wr['-BPM_PLOT-'].update(data=_plot_bpm_curve([], Params.stride))
         return wr
 
     run_window = None
@@ -159,6 +163,8 @@ def GUI_MENU():
             break
         if run_window is not None:
             run_win_event, run_win_values = run_window.read(timeout=16)
+            if run_win_values is None:
+                continue
             # Video plot
             if not sd.q_video_image.empty():
                 original_image = sd.q_video_image.get()
@@ -166,11 +172,11 @@ def GUI_MENU():
                 skin_image = sd.q_skin_image.get()
             if not sd.q_patches_image.empty():
                 patches_image = sd.q_patches_image.get()
-            if original_image is not None and bool(run_win_values["-IN_Visualize_original-"]):
+            if original_image is not None and bool(run_win_values.get("-IN_Visualize_original-", False)):
                 image = original_image
-            elif Params.visualize_skin and skin_image is not None and bool(run_win_values["-IN_Visualize_skin-"]):
+            elif Params.visualize_skin and skin_image is not None and bool(run_win_values.get("-IN_Visualize_skin-", False)):
                 image = skin_image
-            elif Params.visualize_landmarks and patches_image is not None and bool(run_win_values["-IN_Visualize_patches-"]):
+            elif Params.visualize_landmarks and patches_image is not None and bool(run_win_values.get("-IN_Visualize_patches-", False)):
                 image = patches_image
             if image is not None:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -185,19 +191,7 @@ def GUI_MENU():
                 bpm_save.append(bpm)
                 if len(bpm_plot) >= bpm_plot_max:
                     bpm_plot = bpm_plot[1:]
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=np.arange(0, len(bpm_plot), Params.stride), y=np.array(bpm_plot),
-                                         mode='lines+markers',
-                                         name='lines+markers'))
-                fig.update_layout(
-                    autosize=False,
-                    width=600,
-                    height=400,
-                    margin=dict(l=1, r=1, b=1, t=1, pad=1),
-                    paper_bgcolor="LightSteelBlue",
-                )
-                img_bytes = fig.to_image(format="png")
-                run_window['-BPM_PLOT-'].update(data=img_bytes)
+                run_window['-BPM_PLOT-'].update(data=_plot_bpm_curve(bpm_plot, Params.stride))
             if run_win_event == 'Save BPMs':
                 try:
                     path = Params.out_path if Params.out_path is not None else os.getcwd() + \
@@ -333,7 +327,7 @@ def GUI_MENU():
                     values['-FontSize-']) if float(values['-FontSize-']) > 0.0 else 0.3
             window['-FontSize-'].update(str(Params.font_size))
             window['-START-'].update(visible=True)
-        if event == '-START-' and not run_window:
+        elif event == '-START-' and run_window is None:
             bpm_plot = []
             bpm_save = []
             image = None
@@ -344,6 +338,24 @@ def GUI_MENU():
                 vhr_t.daemon = False
                 vhr_t.start()
     window.close()
+
+
+def _plot_bpm_curve(bpm_values, stride):
+    import io
+    import matplotlib.pyplot as plt
+
+    figure, axis = plt.subplots(figsize=(6, 4), dpi=100)
+    axis.plot(np.arange(0, len(bpm_values), stride), bpm_values, marker='o')
+    axis.set_ylim(bottom=0)
+    axis.set_xlabel('Time (s)')
+    axis.set_ylabel('BPM')
+    axis.grid(True)
+    buffer = io.BytesIO()
+    figure.tight_layout()
+    figure.savefig(buffer, format='png')
+    plt.close(figure)
+    buffer.seek(0)
+    return buffer.read()
 
 
 if __name__ == '__main__':
@@ -359,8 +371,21 @@ if __name__ == '__main__':
     Params.pre_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
 
-    Params.method = {'method_func': cupy_CHROM,
-                     'device_type': 'cuda', 'params': {}}
+    if Params.cuda:
+        try:
+            import cupy
+            if not hasattr(cupy, "asarray"):
+                raise ImportError("cupy.asarray 不可用")
+            Params.method = {'method_func': cupy_CHROM,
+                             'device_type': 'cuda', 'params': {}}
+        except Exception as exc:
+            print(f"[WARN] CUDA 初始化失败，改用 CPU：{exc}")
+            Params.cuda = False
+            Params.method = {'method_func': cpu_CHROM,
+                             'device_type': 'cpu', 'params': {}}
+    else:
+        Params.method = {'method_func': cpu_CHROM,
+                         'device_type': 'cpu', 'params': {}}
 
     Params.post_filter = [{'filter_func': BPfilter, 'params': {
         'minHz': 0.7, 'maxHz': 3.0, 'fps': 'adaptive', 'order': 6}}]
