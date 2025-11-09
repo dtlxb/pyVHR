@@ -7,8 +7,20 @@ from lmfit import Model
 from scipy.stats import iqr
 import numpy as np
 from scipy.signal import welch
-import cusignal
-import cupy
+
+try:
+    import cupy
+    _cupy_available = True
+except ImportError:  # pragma: no cover - optional dependency
+    cupy = None
+    _cupy_available = False
+
+try:
+    import cusignal
+    _cusignal_available = True
+except ImportError:  # pragma: no cover - optional dependency
+    cusignal = None
+    _cusignal_available = False
 
 def Welch(bvps, fps, minHz=0.65, maxHz=4.0, nfft=2048):
     """
@@ -41,6 +53,8 @@ def Welch(bvps, fps, minHz=0.65, maxHz=4.0, nfft=2048):
     return Pfreqs, Power
 
 def Welch_cuda(bvps, fps, minHz=0.65, maxHz=4.0, nfft=2048):
+    if not (_cupy_available and _cusignal_available):
+        raise ImportError("cusignal/cupy 未安装，无法执行 GPU 版 Welch。请改用 CPU 版或安装相应依赖。")
     """
     This function computes Welch'method for spectral density estimation on CUDA GPU.
 

@@ -31,6 +31,12 @@ class ServiceConfig:
     stride: int = 1
     log_level: int = logging.INFO
     method: Optional[Dict[str, Any]] = field(default=None)
+    skin_threshold_low: int = 0
+    skin_threshold_high: int = 255
+    signal_threshold_low: int = 0
+    signal_threshold_high: int = 255
+    filter_threshold_low: int = 0
+    filter_threshold_high: int = 255
     pose_ws_host: str = "0.0.0.0"
     pose_ws_port: int = 8766
     pose_publish_interval: float = 0.1
@@ -56,6 +62,7 @@ class RealtimeHRService:
         self._latest_timestamp: Optional[float] = None
         self._clients_count: int = 0
         self._pose_broadcaster: Optional[PoseBroadcaster] = None
+        self._shutdown_started = False
 
     # ---- Public API ----
     def start(self):
@@ -87,8 +94,9 @@ class RealtimeHRService:
             self.stop()
 
     def stop(self):
-        if self._stop_event.is_set():
+        if self._shutdown_started:
             return
+        self._shutdown_started = True
         logger.info("正在停止实时 rPPG 服务……")
         self._stop_event.set()
 
@@ -127,6 +135,12 @@ class RealtimeHRService:
             "visualize_patches",
             "visualize_landmarks",
             "visualize_landmarks_number",
+            "skin_color_low_threshold",
+            "skin_color_high_threshold",
+            "sig_color_low_threshold",
+            "sig_color_high_threshold",
+            "color_low_threshold",
+            "color_high_threshold",
         ]
         self._params_backup = {name: getattr(Params, name) for name in attrs}
 
@@ -141,6 +155,13 @@ class RealtimeHRService:
         Params.visualize_patches = False
         Params.visualize_landmarks = False
         Params.visualize_landmarks_number = False
+
+        Params.skin_color_low_threshold = self.config.skin_threshold_low
+        Params.skin_color_high_threshold = self.config.skin_threshold_high
+        Params.sig_color_low_threshold = self.config.signal_threshold_low
+        Params.sig_color_high_threshold = self.config.signal_threshold_high
+        Params.color_low_threshold = self.config.filter_threshold_low
+        Params.color_high_threshold = self.config.filter_threshold_high
 
         if not Params.cuda:
             Params.method = self.config.method or {"method_func": cpu_CHROM, "device_type": "cpu", "params": {}}

@@ -6,7 +6,6 @@ from time import sleep
 import cv2
 import numpy as np
 import plotly.graph_objects as go
-import PySimpleGUI as sg
 from importlib import import_module, util
 
 from pyVHR.realtime.params import Params
@@ -207,15 +206,24 @@ def VHRroutine(sharedData):
             if processed_frames_count > sig_buff_dim:
                 sig = sig[1:]
                 if sig_buff_counter == 0:
-                    sig_buff_counter = sig_stride
                     copy_sig = np.array(sig, dtype=np.float32)
+                    if copy_sig.ndim < 3:
+                        sig_buff_counter -= 1
+                        continue
                     copy_sig = np.swapaxes(copy_sig, 0, 1)
                     copy_sig = np.swapaxes(copy_sig, 1, 2)
 
                     ### Pre_filtering ###
                     if Params.approach == 'patches':
-                        copy_sig = rgb_filter_th(copy_sig, **{'RGB_LOW_TH':  np.int32(Params.color_low_threshold),
-                                                              'RGB_HIGH_TH': np.int32(Params.color_high_threshold)})
+                        try:
+                            copy_sig = rgb_filter_th(copy_sig, **{
+                                'RGB_LOW_TH':  np.int32(Params.color_low_threshold),
+                                'RGB_HIGH_TH': np.int32(Params.color_high_threshold)
+                            })
+                        except Exception as exc:
+                            print(f"[WARN] RGB 过滤失败：{exc}")
+                            sig_buff_counter -= 1
+                            continue
                     for filt in Params.pre_filter:
                         if filt != {}:
                             if 'fps' in filt['params'] and filt['params']['fps'] == 'adaptive' and fps is not None:
